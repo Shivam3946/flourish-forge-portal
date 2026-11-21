@@ -4,93 +4,55 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h3 class="mb-0">Faculty Workspace — Flourish Forge</h3>
-    <small class="text-muted">Director: Shivam Tiwari | B.Sc. (Hons.) Computer Science, University of Delhi</small>
+    <small class="text-muted">Director: Shivam Tiwari | AI/ChatGPT API Mode: {{ 'Connected (OPENAI_API_KEY)' if chatgpt_enabled else 'Built-in Auto Generator (Set OPENAI_API_KEY for OpenAI)' }}</small>
   </div>
   {% if current_user.role == 'admin' %}
     <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-dark btn-sm">&larr; Back to Director Panel</a>
   {% endif %}
 </div>
 
-{% if flagged_students %}
-<div class="alert alert-danger">
-  <strong>Consecutive Absence Alert:</strong>
-  {% for fs in flagged_students %}
-    <span class="badge bg-danger ms-1">{{ fs.name }} ({{ fs.student_class }})</span>
-  {% endfor %}
-  — marked Absent in the last 2 consecutive sessions.
-</div>
-{% endif %}
-
-<!-- Faculty Profile, Education, Experience & Photo Showcase (Optional) -->
-<div class="card shadow-sm mb-4 border-0">
+<!-- Optional Teacher Profile & Photo Showcase -->
+<div class="card shadow-sm mb-4">
   <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
-    <span>Faculty Profile, Teaching Experience &amp; Photo Showcase <small class="fw-normal">(Profile Update is Optional)</small></span>
+    <span>Faculty Profile, Experience &amp; Photo Showcase <small class="fw-normal">(Optional)</small></span>
     <span class="badge bg-light text-dark">Total Faculty: {{ faculty_list|length }}</span>
   </div>
   <div class="card-body">
     <div class="row g-4">
       <div class="col-lg-5">
-        <div class="border rounded p-3 bg-light h-100">
-          <h6 class="fw-bold mb-1">Update My Teaching Profile &amp; Photo <span class="badge bg-secondary fw-normal">Optional</span></h6>
-          <div class="text-muted small mb-3">Teachers can fill all or any optional details below whenever they want.</div>
-          <form method="POST" action="{{ url_for('update_teacher_profile') }}" enctype="multipart/form-data">
-            <div class="mb-2">
-              <label class="form-label small fw-bold mb-1">Full Name</label>
-              <input type="text" name="name" value="{{ current_user.name }}" class="form-control form-control-sm" required>
-            </div>
-            <div class="row g-2 mb-2">
-              <div class="col-6">
-                <label class="form-label small fw-bold mb-1">Subject / Specialty <span class="text-muted fw-normal">(Optional)</span></label>
-                <input type="text" name="subject_specialty" value="{{ current_user.subject_specialty or '' }}" class="form-control form-control-sm" placeholder="e.g. Maths, Physics">
-              </div>
-              <div class="col-6">
-                <label class="form-label small fw-bold mb-1">Experience (Years) <span class="text-muted fw-normal">(Optional)</span></label>
-                <input type="number" name="experience_years" min="0" max="50" value="{{ current_user.experience_years or 0 }}" class="form-control form-control-sm">
-              </div>
-            </div>
-            <div class="mb-2">
-              <label class="form-label small fw-bold mb-1">Education / Qualification <span class="text-muted fw-normal">(Optional)</span></label>
-              <input type="text" name="qualification" value="{{ current_user.qualification or '' }}" class="form-control form-control-sm" placeholder="e.g. B.Sc. (Hons.) CS, DU / M.Sc.">
-            </div>
-            <div class="mb-2">
-              <label class="form-label small fw-bold mb-1">Profile Photo <span class="text-muted fw-normal">(Optional)</span></label>
-              <input type="file" name="profile_photo" accept=".png,.jpg,.jpeg,.gif,.webp" class="form-control form-control-sm">
-            </div>
-            <div class="mb-3">
-              <label class="form-label small fw-bold mb-1">Teaching Experience &amp; Details <span class="text-muted fw-normal">(Optional)</span></label>
-              <textarea name="bio" rows="2" class="form-control form-control-sm" placeholder="Share classes taught, board results, methodology...">{{ current_user.bio or '' }}</textarea>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm w-100 fw-bold">Save Faculty Profile &amp; Photo</button>
-          </form>
-        </div>
+        <form method="POST" action="{{ url_for('update_teacher_profile') }}" enctype="multipart/form-data" class="border rounded p-3 bg-light">
+          <h6 class="fw-bold mb-2">Update Profile <span class="badge bg-secondary fw-normal">Optional</span></h6>
+          <div class="mb-2"><input type="text" name="name" value="{{ current_user.name }}" class="form-control form-control-sm" required></div>
+          <div class="row g-2 mb-2">
+            <div class="col-6"><input type="text" name="subject_specialty" value="{{ current_user.subject_specialty or '' }}" class="form-control form-control-sm" placeholder="Subject (Optional)"></div>
+            <div class="col-6"><input type="number" name="experience_years" min="0" value="{{ current_user.experience_years or 0 }}" class="form-control form-control-sm" placeholder="Experience Yrs (Optional)"></div>
+          </div>
+          <div class="mb-2"><input type="text" name="qualification" value="{{ current_user.qualification or '' }}" class="form-control form-control-sm" placeholder="Education / Qualification (Optional)"></div>
+          <div class="mb-2"><input type="file" name="profile_photo" accept=".png,.jpg,.jpeg,.gif,.webp" class="form-control form-control-sm"></div>
+          <div class="mb-2"><textarea name="bio" rows="2" class="form-control form-control-sm" placeholder="Experience & teaching bio (Optional)">{{ current_user.bio or '' }}</textarea></div>
+          <button type="submit" class="btn btn-primary btn-sm w-100">Save Profile (Optional)</button>
+        </form>
       </div>
-
       <div class="col-lg-7">
-        <h6 class="fw-bold mb-3">All Faculty Members ({{ faculty_list|length }})</h6>
         <div class="row g-3">
           {% for fac in faculty_list %}
           <div class="col-md-6">
-            <div class="card h-100 border shadow-sm">
+            <div class="card h-100 border">
               <div class="card-body p-3">
-                <div class="d-flex align-items-center gap-3 mb-2">
+                <div class="d-flex align-items-center gap-2 mb-2">
                   {% if fac.profile_photo %}
-                    <img src="{{ url_for('static', filename='faculty/' + fac.profile_photo) }}" alt="{{ fac.name }}" class="rounded-circle border border-2 border-primary" style="width: 68px; height: 68px; object-fit: cover;">
+                    <img src="{{ url_for('static', filename='faculty/' + fac.profile_photo) }}" class="rounded-circle" style="width:54px;height:54px;object-fit:cover;">
                   {% else %}
-                    <div class="rounded-circle bg-dark text-white d-flex align-items-center justify-content-center fw-bold fs-4" style="width: 68px; height: 68px; flex-shrink: 0;">
-                      {{ fac.name[:1]|upper }}
-                    </div>
+                    <div class="rounded-circle bg-dark text-white d-flex align-items-center justify-content-center fw-bold" style="width:54px;height:54px;">{{ fac.name[:1]|upper }}</div>
                   {% endif %}
                   <div>
                     <div class="fw-bold">{{ fac.name }}</div>
-                    <span class="badge bg-{{ 'dark' if fac.role == 'admin' else 'info text-dark' }}">{{ 'Director' if fac.role == 'admin' else 'Faculty' }}</span>
-                    <span class="badge bg-{{ 'success' if fac.experience_years else 'secondary' }}">{{ fac.experience_years ~ ' Yrs Exp' if fac.experience_years else 'Exp: Optional' }}</span>
+                    <span class="badge bg-success">{{ fac.experience_years ~ ' Yrs Exp' if fac.experience_years else 'Exp: Optional' }}</span>
                   </div>
                 </div>
-                <div class="small mb-1"><strong>Subject:</strong> {{ fac.subject_specialty or 'CBSE Classes 7–12' }}</div>
-                <div class="small mb-1"><strong>Qualification:</strong> {{ fac.qualification or ('B.Sc. (Hons.) Computer Science, University of Delhi' if fac.role == 'admin' else 'Faculty Member') }}</div>
-                {% if fac.bio %}
-                  <div class="small text-muted mt-1">{{ fac.bio }}</div>
-                {% endif %}
+                <div class="small"><strong>Subject:</strong> {{ fac.subject_specialty or 'CBSE Classes 7–12' }}</div>
+                <div class="small"><strong>Education:</strong> {{ fac.qualification or 'Faculty Member' }}</div>
+                {% if fac.bio %}<div class="small text-muted mt-1">{{ fac.bio }}</div>{% endif %}
               </div>
             </div>
           </div>
@@ -101,174 +63,30 @@
   </div>
 </div>
 
-<!-- One-Click Daily Attendance -->
-<div class="card shadow-sm mb-4">
-  <div class="card-header bg-dark text-white fw-bold">One-Click Daily Batch Attendance (Classes 7–12)</div>
-  <div class="card-body">
-    {% if students %}
-    <form method="POST" action="{{ url_for('mark_attendance') }}">
-      <div class="row mb-3 align-items-center">
-        <div class="col-md-3">
-          <label class="form-label small fw-bold mb-1">Session Date</label>
-          <input type="date" name="att_date" value="{{ today_str }}" class="form-control form-control-sm" required>
-        </div>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm table-bordered align-middle">
-          <thead class="table-light">
-            <tr><th>Student Name</th><th>Class</th><th>Batch Timing</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {% for s in students %}
-            <tr>
-              <td>{{ s.name }}</td>
-              <td>{{ s.student_class }}</td>
-              <td>{{ s.batch_timing or 'Regular' }}</td>
-              <td>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="status_{{ s.id }}" value="Present" checked>
-                  <label class="form-check-label text-success fw-semibold">Present</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="status_{{ s.id }}" value="Absent">
-                  <label class="form-check-label text-danger fw-semibold">Absent</label>
-                </div>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <button type="submit" class="btn btn-dark btn-sm">Save Attendance</button>
-    </form>
-    {% else %}
-      <p class="text-muted mb-0">No students enrolled yet. Add students from the Director Control Panel.</p>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Marks & Study Material / Photo Upload -->
+<!-- 1. Auto-Generate Chapter-Wise Question Bank & 2. Strict-Count Chapter-Wise Test Paper Generator -->
 <div class="row g-4">
   <div class="col-md-6">
     <div class="card shadow-sm h-100">
-      <div class="card-header bg-primary text-white fw-bold">Publish Chapter Test Marks</div>
+      <div class="card-header bg-warning text-dark fw-bold">Auto-Generate Chapter-Wise Questions into Bank</div>
       <div class="card-body">
-        <form method="POST" action="{{ url_for('add_score') }}">
-          <div class="mb-2">
-            <select name="student_id" class="form-select" required>
-              <option value="">Select Student (Class 7–12)</option>
-              {% for s in students %}
-                <option value="{{ s.id }}">{{ s.name }} ({{ s.student_class }})</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-2"><input type="text" name="subject" class="form-control" placeholder="Subject (e.g. Mathematics, Physics, Science)" required></div>
-          <div class="mb-2"><input type="text" name="chapter" class="form-control" placeholder="Chapter Name" required></div>
+        <form method="POST" action="{{ url_for('auto_generate_chapter_bank') }}">
           <div class="row g-2 mb-2">
-            <div class="col-6"><input type="number" step="0.5" name="marks_obtained" class="form-control" placeholder="Marks Obtained" required></div>
-            <div class="col-6"><input type="number" step="0.5" name="max_marks" class="form-control" placeholder="Max Marks" required></div>
-          </div>
-          <div class="mb-3"><input type="text" name="remarks" class="form-control" placeholder="Teacher Remarks (Optional)"></div>
-          <button type="submit" class="btn btn-primary w-100">Publish Score</button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header bg-success text-white fw-bold">Upload Study Material / Photo / Worksheet (Class 7–12)</div>
-      <div class="card-body">
-        <form method="POST" action="{{ url_for('upload_material') }}" enctype="multipart/form-data">
-          <div class="mb-2"><input type="text" name="title" class="form-control" placeholder="Title (e.g. Board Notes Photo, Worksheet PDF)" required></div>
-          <div class="mb-2">
-            <select name="target_class" class="form-select" required>
-              <option value="">Target Class (7–12)</option>
-              {% for cls in classes %}
-                <option value="{{ cls }}">{{ cls }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-2"><input type="text" name="subject" class="form-control" placeholder="Subject" required></div>
-          <div class="mb-2">
-            <label class="form-label small text-muted mb-1">Choose File or Photo (PNG, JPG, JPEG, WEBP, PDF, DOCX)</label>
-            <input type="file" name="file" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.ppt,.pptx,.txt" class="form-control" required>
-          </div>
-          <button type="submit" class="btn btn-success w-100">Upload File / Photo</button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Uploaded Study Vault & Photos -->
-<div class="card shadow-sm mt-4">
-  <div class="card-header fw-bold">Uploaded Study Materials &amp; Photos ({{ materials|length }})</div>
-  <div class="card-body">
-    {% if materials %}
-    <div class="row g-3">
-      {% for m in materials %}
-      <div class="col-md-4">
-        <div class="border rounded p-2 h-100 bg-white">
-          {% if m.is_image %}
-            <img src="{{ url_for('static', filename='uploads/' + m.filename) }}" alt="{{ m.title }}" class="img-fluid rounded mb-2" style="max-height: 160px; width: 100%; object-fit: cover;">
-          {% endif %}
-          <div class="fw-bold small">{{ m.title }}</div>
-          <div class="text-muted small">{{ m.target_class }} &bull; {{ m.subject }}</div>
-          <a href="{{ url_for('static', filename='uploads/' + m.filename) }}" target="_blank" class="btn btn-xs btn-sm btn-outline-success mt-2">Open / Download</a>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-      <p class="text-muted mb-0">No materials or photos uploaded yet.</p>
-    {% endif %}
-  </div>
-</div>
-
-<!-- Question Bank (MCQ + Subjective) & Test Paper Generator -->
-<div class="row g-4 mt-2">
-  <div class="col-md-6">
-    <div class="card shadow-sm h-100">
-      <div class="card-header bg-warning text-dark fw-bold">Add Question (MCQ / Subjective) to Question Bank</div>
-      <div class="card-body">
-        <form method="POST" action="{{ url_for('add_question') }}">
-          <div class="row g-2 mb-2">
-            <div class="col-4">
+            <div class="col-6">
               <select name="target_class" class="form-select form-select-sm" required>
-                {% for cls in classes %}<option value="{{ cls }}">{{ cls }}</option>{% endfor %}
+                {% for cls in classes %}<option value="{{ cls }}" {% if cls == 'Class 10' %}selected{% endif %}>{{ cls }}</option>{% endfor %}
               </select>
             </div>
-            <div class="col-4">
-              <select name="question_type" id="qTypeSelect" class="form-select form-select-sm" onchange="toggleMcqBox()">
-                <option value="MCQ">MCQ (4 Options)</option>
-                <option value="Subjective">Subjective</option>
-              </select>
-            </div>
-            <div class="col-4"><input type="text" name="subject" class="form-control form-control-sm" placeholder="Subject" required></div>
+            <div class="col-6"><input type="text" name="subject" value="Mathematics" class="form-control form-control-sm" placeholder="Subject" required></div>
           </div>
-          <div class="row g-2 mb-2">
-            <div class="col-5"><input type="text" name="chapter" class="form-control form-control-sm" placeholder="Chapter" required></div>
-            <div class="col-4">
-              <select name="difficulty" class="form-select form-select-sm">
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="HOTS">HOTS</option>
-              </select>
-            </div>
-            <div class="col-3"><input type="number" name="marks" value="1" min="1" class="form-control form-control-sm" placeholder="Marks" required></div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-1">Chapter Name(s) (comma-separated allowed)</label>
+            <input type="text" name="chapters" class="form-control form-control-sm" required placeholder="e.g. Quadratic Equations, Trigonometry">
           </div>
-          <div class="mb-2"><textarea name="question_text" rows="2" class="form-control form-control-sm" placeholder="Enter MCQ or Subjective question..." required></textarea></div>
-
-          <div id="mcqOptionsBox" class="row g-1 mb-2">
-            <div class="col-6"><input type="text" name="option_a" class="form-control form-control-sm" placeholder="Option (A)"></div>
-            <div class="col-6"><input type="text" name="option_b" class="form-control form-control-sm" placeholder="Option (B)"></div>
-            <div class="col-6"><input type="text" name="option_c" class="form-control form-control-sm" placeholder="Option (C)"></div>
-            <div class="col-6"><input type="text" name="option_d" class="form-control form-control-sm" placeholder="Option (D)"></div>
+          <div class="row g-2 mb-3">
+            <div class="col-6"><label class="small fw-bold">Auto MCQs per Chapter</label><input type="number" name="mcq_count" value="10" min="0" class="form-control form-control-sm"></div>
+            <div class="col-6"><label class="small fw-bold">Auto Subjective per Chapter</label><input type="number" name="subj_count" value="5" min="0" class="form-control form-control-sm"></div>
           </div>
-
-          <div class="mb-2"><input type="text" name="answer_key" class="form-control form-control-sm" placeholder="Correct Option (e.g. (A) ...) or Answer Key"></div>
-          <button type="submit" class="btn btn-warning btn-sm w-100 fw-bold">Save to Question Bank</button>
+          <button type="submit" class="btn btn-warning btn-sm w-100 fw-bold">Generate &amp; Save Chapter Questions</button>
         </form>
       </div>
     </div>
@@ -276,7 +94,7 @@
 
   <div class="col-md-6">
     <div class="card shadow-sm h-100">
-      <div class="card-header bg-info text-dark fw-bold">Automated CBSE Test Paper Generator (MCQ + Subjective)</div>
+      <div class="card-header bg-info text-dark fw-bold">Chapter-Wise Test Paper Generator (Exact Counts)</div>
       <div class="card-body">
         <form method="POST" action="{{ url_for('generate_paper') }}">
           <div class="row g-2 mb-2">
@@ -287,107 +105,150 @@
             </div>
             <div class="col-6"><input type="text" name="subject" value="Mathematics" class="form-control form-control-sm" placeholder="Subject" required></div>
           </div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-1">Enter Chapter Name(s)</label>
+            <input type="text" name="chapters" class="form-control form-control-sm" placeholder="e.g. Quadratic Equations (or leave blank for subject)">
+          </div>
           <div class="row g-2 mb-2">
-            <div class="col-7"><input type="text" name="exam_title" value="Weekly Assessment Test" class="form-control form-control-sm" placeholder="Test Title"></div>
-            <div class="col-5"><input type="text" name="duration" value="1 Hour" class="form-control form-control-sm" placeholder="Duration"></div>
+            <div class="col-6"><input type="text" name="exam_title" value="Chapter Assessment Test" class="form-control form-control-sm" placeholder="Paper Title"></div>
+            <div class="col-6"><input type="text" name="duration" value="1 Hour 30 Mins" class="form-control form-control-sm" placeholder="Duration"></div>
           </div>
           <div class="row g-2 mb-3">
-            <div class="col-3"><label class="small fw-bold">MCQs</label><input type="number" name="mcq_count" value="10" min="0" class="form-control form-control-sm"></div>
-            <div class="col-3"><label class="small">Easy</label><input type="number" name="easy_count" value="2" min="0" class="form-control form-control-sm"></div>
-            <div class="col-3"><label class="small">Medium</label><input type="number" name="medium_count" value="1" min="0" class="form-control form-control-sm"></div>
-            <div class="col-3"><label class="small">HOTS</label><input type="number" name="hots_count" value="1" min="0" class="form-control form-control-sm"></div>
+            <div class="col-6"><label class="small fw-bold">Exact MCQ Count</label><input type="number" name="mcq_count" value="10" min="0" max="100" class="form-control form-control-sm"></div>
+            <div class="col-6"><label class="small fw-bold">Exact Subjective Count</label><input type="number" name="subj_count" value="10" min="0" max="100" class="form-control form-control-sm"></div>
           </div>
-          <button type="submit" class="btn btn-info btn-sm w-100 fw-bold">Compile Printable Question Paper + Answer Key</button>
+          <button type="submit" class="btn btn-info btn-sm w-100 fw-bold">Generate Paper (Exact Count)</button>
         </form>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Manage Question Bank Table (Filter, Edit, Delete) -->
+<!-- Create Online MCQ Examination for Students -->
 <div class="card shadow-sm mt-4">
-  <div class="card-header fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
-    <span>Manage Question Bank ({{ questions|length }} Questions)</span>
-    <form method="GET" action="{{ url_for('teacher_dashboard') }}" class="d-flex gap-2">
-      <select name="filter_class" class="form-select form-select-sm">
-        <option value="">All Classes (7–12)</option>
-        {% for cls in classes %}
-          <option value="{{ cls }}" {% if filter_cls == cls %}selected{% endif %}>{{ cls }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" name="filter_subject" value="{{ filter_sub }}" class="form-control form-control-sm" placeholder="Filter by Subject">
-      <button type="submit" class="btn btn-sm btn-dark">Filter</button>
+  <div class="card-header bg-dark text-white fw-bold">Create Online MCQ Examination for Students (e.g., 20 MCQs)</div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('create_online_exam') }}">
+      <div class="row g-2 mb-2">
+        <div class="col-md-4"><input type="text" name="title" class="form-control form-control-sm" placeholder="Exam Title (e.g. Class 10 Maths 20 MCQ Test)" required></div>
+        <div class="col-md-2">
+          <select name="target_class" class="form-select form-select-sm" required>
+            {% for cls in classes %}<option value="{{ cls }}" {% if cls == 'Class 10' %}selected{% endif %}>{{ cls }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2"><input type="text" name="subject" value="Mathematics" class="form-control form-control-sm" required></div>
+        <div class="col-md-2"><input type="text" name="chapter" value="Chapter Test" class="form-control form-control-sm" required></div>
+        <div class="col-md-2"><input type="number" name="mcq_count" value="20" min="1" max="50" class="form-control form-control-sm" required></div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small text-muted mb-1">Optional Custom MCQs (one per line: Question | OptA | OptB | OptC | OptD | Correct A/B/C/D). Remaining up to MCQ Count will be pulled from Bank or auto-generated.</label>
+        <textarea name="bulk_mcqs" rows="3" class="form-control form-control-sm" placeholder="What is 2+2? | 3 | 4 | 5 | 6 | B"></textarea>
+      </div>
+      <button type="submit" class="btn btn-success btn-sm fw-bold">Publish Online MCQ Exam to Student Dashboard</button>
     </form>
-  </div>
-  <div class="card-body table-responsive">
-    <table class="table table-sm table-striped align-middle">
-      <thead>
-        <tr>
-          <th>Class</th>
-          <th>Subject / Chapter</th>
-          <th>Type</th>
-          <th>Diff.</th>
-          <th>Question &amp; Options</th>
-          <th>Answer</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for q in questions %}
-        <tr>
-          <td>{{ q.target_class }}</td>
-          <td><strong>{{ q.subject }}</strong><br><small class="text-muted">{{ q.chapter }}</small></td>
-          <td><span class="badge bg-{{ 'primary' if q.question_type == 'MCQ' else 'secondary' }}">{{ q.question_type }}</span></td>
-          <td>{{ q.difficulty }} ({{ q.marks }}m)</td>
-          <td style="max-width: 340px;">
-            <div>{{ q.question_text }}</div>
-            {% if q.question_type == 'MCQ' %}
-              <small class="text-muted">(A) {{ q.option_a }} | (B) {{ q.option_b }} | (C) {{ q.option_c }} | (D) {{ q.option_d }}</small>
-            {% endif %}
-          </td>
-          <td><small class="text-success fw-semibold">{{ q.answer_key }}</small></td>
-          <td>
-            <div class="d-flex gap-1">
-              <a href="{{ url_for('edit_question', q_id=q.id) }}" class="btn btn-xs btn-sm btn-outline-primary">Edit</a>
-              <form method="POST" action="{{ url_for('delete_question', q_id=q.id) }}" onsubmit="return confirm('Delete this question?');">
-                <button type="submit" class="btn btn-xs btn-sm btn-outline-danger">Delete</button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted">No questions found for the selected filter.</td></tr>
+
+    {% if exams %}
+    <div class="mt-3">
+      <div class="small fw-bold mb-1">Published Online Exams ({{ exams|length }}):</div>
+      <ul class="list-group list-group-flush small">
+        {% for ex in exams %}
+          <li class="list-group-item px-0 py-1"><strong>{{ ex.title }}</strong> — {{ ex.target_class }} ({{ ex.subject }}) &bull; {{ ex.questions|length }} MCQs &bull; Attempts: {{ ex.attempts|length }}</li>
         {% endfor %}
-      </tbody>
-    </table>
+      </ul>
+    </div>
+    {% endif %}
   </div>
 </div>
 
-<!-- Student Doubt Tickets -->
+<!-- Add Manual Question & Question Bank List -->
 <div class="card shadow-sm mt-4">
-  <div class="card-header fw-bold">Student Doubt Resolution Queue</div>
+  <div class="card-header fw-bold">Add Manual Question &amp; View Question Bank ({{ questions|length }})</div>
   <div class="card-body">
-    {% if doubts %}
-      {% for d in doubts %}
-      <div class="border rounded p-3 mb-3 bg-white">
-        <div class="d-flex justify-content-between">
-          <strong>{{ d.student.name }} ({{ d.student.student_class }}) &bull; {{ d.subject }}</strong>
-          <span class="badge bg-{{ 'success' if d.status == 'Resolved' else 'danger' }}">{{ d.status }}</span>
+    <form method="POST" action="{{ url_for('add_question') }}" class="mb-4 border-bottom pb-3">
+      <div class="row g-2 mb-2">
+        <div class="col-md-2">
+          <select name="target_class" class="form-select form-select-sm" required>
+            {% for cls in classes %}<option value="{{ cls }}">{{ cls }}</option>{% endfor %}
+          </select>
         </div>
-        <p class="mt-2 mb-2"><strong>Q:</strong> {{ d.question }}</p>
-        {% if d.status == 'Resolved' %}
-          <div class="alert alert-success py-2 mb-0"><strong>Solution:</strong> {{ d.answer }}</div>
-        {% else %}
-          <form method="POST" action="{{ url_for('resolve_doubt', doubt_id=d.id) }}" class="d-flex gap-2">
-            <input type="text" name="answer" class="form-control form-control-sm" placeholder="Write step-by-step explanation..." required>
-            <button type="submit" class="btn btn-sm btn-primary">Send Reply</button>
-          </form>
-        {% endif %}
+        <div class="col-md-2">
+          <select name="question_type" id="qTypeSelect" class="form-select form-select-sm" onchange="toggleMcqBox()">
+            <option value="MCQ">MCQ</option>
+            <option value="Subjective">Subjective</option>
+          </select>
+        </div>
+        <div class="col-md-2"><input type="text" name="subject" class="form-control form-control-sm" placeholder="Subject" required></div>
+        <div class="col-md-3"><input type="text" name="chapter" class="form-control form-control-sm" placeholder="Chapter" required></div>
+        <div class="col-md-2">
+          <select name="difficulty" class="form-select form-select-sm">
+            <option value="Easy">Easy</option>
+            <option value="Medium">Medium</option>
+            <option value="HOTS">HOTS</option>
+          </select>
+        </div>
+        <div class="col-md-1"><input type="number" name="marks" value="1" min="1" class="form-control form-control-sm" required></div>
+      </div>
+      <div class="mb-2"><textarea name="question_text" rows="2" class="form-control form-control-sm" placeholder="Question text..." required></textarea></div>
+      <div id="mcqOptionsBox" class="row g-2 mb-2">
+        <div class="col-3"><input type="text" name="option_a" class="form-control form-control-sm" placeholder="Option A"></div>
+        <div class="col-3"><input type="text" name="option_b" class="form-control form-control-sm" placeholder="Option B"></div>
+        <div class="col-3"><input type="text" name="option_c" class="form-control form-control-sm" placeholder="Option C"></div>
+        <div class="col-3"><input type="text" name="option_d" class="form-control form-control-sm" placeholder="Option D"></div>
+      </div>
+      <div class="d-flex gap-2">
+        <input type="text" name="answer_key" class="form-control form-control-sm" placeholder="Answer Key (e.g. (A) ...)">
+        <button type="submit" class="btn btn-primary btn-sm">Add Question</button>
+      </div>
+    </form>
+
+    <form method="GET" action="{{ url_for('teacher_dashboard') }}" class="row g-2 mb-3">
+      <div class="col-md-3">
+        <select name="filter_class" class="form-select form-select-sm">
+          <option value="">All Classes</option>
+          {% for cls in classes %}<option value="{{ cls }}" {% if filter_cls == cls %}selected{% endif %}>{{ cls }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3"><input type="text" name="filter_subject" value="{{ filter_sub }}" class="form-control form-control-sm" placeholder="Filter Subject"></div>
+      <div class="col-md-4"><input type="text" name="filter_chapter" value="{{ filter_chap }}" class="form-control form-control-sm" placeholder="Filter Chapter"></div>
+      <div class="col-md-2"><button type="submit" class="btn btn-dark btn-sm w-100">Filter</button></div>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead><tr><th>Class</th><th>Subject / Chapter</th><th>Type</th><th>Question</th><th>Answer</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for q in questions %}
+          <tr>
+            <td>{{ q.target_class }}</td>
+            <td><strong>{{ q.subject }}</strong><br><small class="text-muted">{{ q.chapter }}</small></td>
+            <td><span class="badge bg-{{ 'primary' if q.question_type == 'MCQ' else 'secondary' }}">{{ q.question_type }}</span></td>
+            <td>{{ q.question_text }}</td>
+            <td><small class="text-success">{{ q.answer_key }}</small></td>
+            <td class="d-flex gap-1">
+              <a href="{{ url_for('edit_question', q_id=q.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+              <form method="POST" action="{{ url_for('delete_question', q_id=q.id) }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Del</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Official NCERT Links -->
+<div class="card shadow-sm mt-4">
+  <div class="card-header fw-bold">Official NCERT Books Direct Links</div>
+  <div class="card-body">
+    <div class="row g-2">
+      {% for nl in ncert_links %}
+      <div class="col-md-6">
+        <a href="{{ nl.url }}" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm w-100 text-start">{{ nl.title }} &rarr;</a>
       </div>
       {% endfor %}
-    {% else %}
-      <p class="text-muted mb-0">No student doubts posted yet.</p>
-    {% endif %}
+    </div>
   </div>
 </div>
 

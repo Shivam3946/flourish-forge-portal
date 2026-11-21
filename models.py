@@ -16,10 +16,10 @@ class User(UserMixin, db.Model):
     student_class = db.Column(db.String(15), nullable=True)  # 'Class 7' .. 'Class 12'
     batch_timing = db.Column(db.String(50), nullable=True)   # e.g. '4:00 PM - 5:30 PM'
     subject_specialty = db.Column(db.String(50), nullable=True)  # For teachers
-    qualification = db.Column(db.String(150), nullable=True)       # Education / academic background
-    experience_years = db.Column(db.Integer, nullable=True, default=0)  # Teaching experience in years
-    bio = db.Column(db.Text, nullable=True)                        # Detailed teaching profile / achievements
-    profile_photo = db.Column(db.String(200), nullable=True)       # Filename under static/faculty/
+    qualification = db.Column(db.String(150), nullable=True)
+    experience_years = db.Column(db.Integer, nullable=True, default=0)
+    bio = db.Column(db.Text, nullable=True)
+    profile_photo = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
@@ -62,19 +62,6 @@ class TestScore(db.Model):
     date_recorded = db.Column(db.Date, default=date.today)
 
     student = db.relationship('User', backref='scores')
-
-class FeeRecord(db.Model):
-    __tablename__ = 'fee_records'
-    id = db.Column(db.Integer, primary_key=True)
-    receipt_no = db.Column(db.String(30), unique=True, nullable=False)
-    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    month = db.Column(db.String(30), nullable=False)
-    amount = db.Column(db.Integer, nullable=False)
-    payment_mode = db.Column(db.String(30), default='UPI')
-    status = db.Column(db.String(20), default='Paid')  # 'Paid' or 'Pending'
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    student = db.relationship('User', backref='fees')
 
 class StudyMaterial(db.Model):
     __tablename__ = 'study_materials'
@@ -126,3 +113,41 @@ class Notice(db.Model):
     message = db.Column(db.Text, nullable=False)
     target_class = db.Column(db.String(20), default='All Classes')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class OnlineExam(db.Model):
+    __tablename__ = 'online_exams'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    target_class = db.Column(db.String(15), nullable=False)
+    subject = db.Column(db.String(50), nullable=False)
+    chapter = db.Column(db.String(100), nullable=False)
+    created_by = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    questions = db.relationship('ExamMCQ', backref='exam', cascade='all, delete-orphan', order_by='ExamMCQ.id.asc()')
+    attempts = db.relationship('ExamAttempt', backref='exam', cascade='all, delete-orphan')
+
+class ExamMCQ(db.Model):
+    __tablename__ = 'exam_mcqs'
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('online_exams.id'), nullable=False)
+    question_text = db.Column(db.Text, nullable=False)
+    option_a = db.Column(db.String(250), nullable=False)
+    option_b = db.Column(db.String(250), nullable=False)
+    option_c = db.Column(db.String(250), nullable=False)
+    option_d = db.Column(db.String(250), nullable=False)
+    correct_option = db.Column(db.String(1), nullable=False)  # 'A', 'B', 'C', 'D'
+    marks = db.Column(db.Integer, default=1)
+
+class ExamAttempt(db.Model):
+    __tablename__ = 'exam_attempts'
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(db.Integer, db.ForeignKey('online_exams.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    score = db.Column(db.Integer, nullable=False)
+    total_marks = db.Column(db.Integer, nullable=False)
+    correct_count = db.Column(db.Integer, nullable=False)
+    total_questions = db.Column(db.Integer, nullable=False)
+    percentage = db.Column(db.Float, nullable=False)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('User', backref='exam_attempts')

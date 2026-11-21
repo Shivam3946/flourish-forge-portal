@@ -1,6 +1,8 @@
 import os
+import json
 import random
 import smtplib
+import urllib.request
 from email.message import EmailMessage
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -9,7 +11,8 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from werkzeug.utils import secure_filename
 from models import (
     db, User, PasswordOTP, Attendance, TestScore,
-    FeeRecord, StudyMaterial, DoubtTicket, QuestionBank, Notice
+    StudyMaterial, DoubtTicket, QuestionBank, Notice,
+    OnlineExam, ExamMCQ, ExamAttempt
 )
 
 app = Flask(__name__)
@@ -22,6 +25,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
 app.config['FACULTY_FOLDER'] = os.path.join(app.root_path, 'static', 'faculty')
 
+# Optional LLM / ChatGPT API config (set OPENAI_API_KEY in Render Environment if desired)
+app.config['OPENAI_API_KEY'] = os.environ.get('OPENAI_API_KEY', '').strip()
+app.config['OPENAI_MODEL'] = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini').strip()
+
 # Email SMTP configuration (set via Render Environment Variables)
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', '587'))
@@ -33,6 +40,13 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['FACULTY_FOLDER'], exist_ok=True)
 
 CLASSES_7_TO_12 = ['Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12']
+NCERT_OFFICIAL_LINKS = [
+    {"class_name": "Class 8", "title": "NCERT Official Textbooks — Class 8", "url": "https://ncert.nic.in/textbook.php?hesc1=0-13"},
+    {"class_name": "Class 9", "title": "NCERT Official Textbooks — Class 9", "url": "https://ncert.nic.in/textbook.php?iesc1=0-12"},
+    {"class_name": "Class 10", "title": "NCERT Official Textbooks — Class 10", "url": "https://ncert.nic.in/textbook.php?jesc1=0-13"},
+    {"class_name": "All Classes", "title": "NCERT Official E-Book Portal (All Classes)", "url": "https://ncert.nic.in/textbook.php"},
+]
+
 ALLOWED_EXTENSIONS = {
     'pdf', 'doc', 'docx', 'txt', 'ppt', 'pptx',
     'png', 'jpg', 'jpeg', 'gif', 'webp'
@@ -42,12 +56,133 @@ IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 def allowed_image(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in IMAGE_EXTENSIONS
 
-db.init_app(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def call_chatgpt_api(prompt_text):
+    api_key = app.config['OPENAI_API_KEY']
+    if not api_key:
+        return None
+    try:
+        payload = json.dumps({
+            "model": app.config['OPENAI_MODEL'],
+            "messages": [
+                {"role": "system", "content": "You are a CBSE academic question and test generator for Flourish Forge."},
+                {"role": "user", "content": prompt_text}
+            ],
+            "temperature": 0.4
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"]
+    except Exception:
+        return None
+
+def build_auto_mcq(target_class, subject, chapter, idx, difficulty='Medium'):
+    llm_out = call_chatgpt_api(
+        f"Create 1 CBSE {target_class} {subject} MCQ on chapter '{chapter}' ({difficulty}). "
+        f"Reply ONLY as JSON: {{"q":"...","a":"...","b":"...","c":"...","d":"...","ans":"A"}}"
+    )
+    if llm_out:
+        try:
+            start = llm_out.find("{")
+            end = llm_out.rfind("}") + 1
+            if start != -1 and end > start:
+                obj = json.loads(llm_out[start:end])
+                ans_let = str(obj.get("ans", "A")).strip().upper()[:1]
+                if ans_let not in ("A", "B", "C", "D"):
+                    ans_let = "A"
+                opt_map = {"A": obj.get("a", "Option A"), "B": obj.get("b", "Option B"), "C": obj.get("c", "Option C"), "D": obj.get("d", "Option D")}
+                return QuestionBank(
+                    target_class=target_class, subject=subject, chapter=chapter,
+                    question_type='MCQ', difficulty=difficulty, marks=1,
+                    question_text=f"[{chapter}] {obj.get('q', f'Auto MCQ #{idx} on {chapter}')}",
+                    option_a=str(obj.get("a", "Option A")),
+                    option_b=str(obj.get("b", "Option B")),
+                    option_c=str(obj.get("c", "Option C")),
+                    option_d=str(obj.get("d", "Option D")),
+                    answer_key=f"({ans_let}) {opt_map[ans_let]}"
+                )
+        except Exception:
+            pass
+
+    templates_mcq = [
+        (f"In the chapter '{chapter}' ({subject}, {target_class}), which statement is core to CBSE concepts? (Set {idx})",
+         "Fundamental rule holds under standard conditions", "Exception applies in all cases without condition",
+         "Unrelated to syllabus unit", "Always zero regardless of input", "A", "Fundamental rule holds under standard conditions"),
+        (f"Which key concept from '{chapter}' is frequently tested in {target_class} {subject} assessments? (Set {idx})",
+         "Direct formula / definition application", "Ignoring units and signs",
+         "Random guessing without steps", "None of the above", "A", "Direct formula / definition application"),
+        (f"For '{chapter}' in {target_class} {subject}, what should be checked first before solving a problem? (Set {idx})",
+         "Given values, units, and syllabus conditions", "Skipping problem statement",
+         "Using wrong chapter formula", "Rounding before calculation", "A", "Given values, units, and syllabus conditions"),
+        (f"Which approach best helps score full marks on '{chapter}' questions in {target_class} {subject}? (Set {idx})",
+         "Clear step-by-step reasoning and final answer", "Writing only an unverified number",
+         "Omitting key terms", "Leaving steps incomplete", "A", "Clear step-by-step reasoning and final answer"),
+    ]
+    qt, oa, ob, oc, od, corr, ans_txt = templates_mcq[(idx - 1) % len(templates_mcq)]
+    return QuestionBank(
+        target_class=target_class, subject=subject, chapter=chapter,
+        question_type='MCQ', difficulty=difficulty, marks=1,
+        question_text=qt, option_a=oa, option_b=ob, option_c=oc, option_d=od,
+        answer_key=f"({corr}) {ans_txt}"
+    )
+
+def build_auto_subjective(target_class, subject, chapter, idx, difficulty='Medium'):
+    marks_map = {'Easy': 2, 'Medium': 3, 'HOTS': 5}
+    m = marks_map.get(difficulty, 3)
+    llm_out = call_chatgpt_api(
+        f"Write 1 CBSE {target_class} {subject} {difficulty} subjective question ({m} marks) on chapter '{chapter}', "
+        f"followed by 'ANSWER: ...' on a new line."
+    )
+    if llm_out and "ANSWER:" in llm_out:
+        parts = llm_out.split("ANSWER:", 1)
+        q_part = parts[0].strip()
+        a_part = parts[1].strip()
+        if q_part:
+            return QuestionBank(
+                target_class=target_class, subject=subject, chapter=chapter,
+                question_type='Subjective', difficulty=difficulty, marks=m,
+                question_text=f"[{chapter} - {difficulty}] {q_part}",
+                answer_key=a_part
+            )
+
+    if difficulty == 'Easy':
+        qt = f"[{chapter}] State two key definitions/properties from '{chapter}' in {target_class} {subject} with a simple example. (Q{idx})"
+        ak = f"State accurate NCERT definition/property for '{chapter}' and provide one valid example."
+    elif difficulty == 'Medium':
+        qt = f"[{chapter}] Explain the main concept/method in '{chapter}' ({target_class} {subject}) step-by-step with an illustrative case. (Q{idx})"
+        ak = f"Write structured steps, formula/principle from '{chapter}', and final verified result."
+    else:
+        qt = f"[{chapter} - HOTS] Analyse a higher-order application problem based on '{chapter}' in {target_class} {subject} and justify your steps. (Q{idx})"
+        ak = f"Identify core condition in '{chapter}', apply logical/analytical steps, and conclude clearly."
+
+    return QuestionBank(
+        target_class=target_class, subject=subject, chapter=chapter,
+        question_type='Subjective', difficulty=difficulty, marks=m,
+        question_text=qt, answer_key=ak
+    )
+
+def pick_exact_questions(pool, requested_count, maker_fn):
+    if requested_count <= 0:
+        return []
+    pool_copy = list(pool)
+    random.shuffle(pool_copy)
+    selected = pool_copy[:requested_count]
+    auto_idx = 1
+    while len(selected) < requested_count:
+        selected.append(maker_fn(auto_idx))
+        auto_idx += 1
+    return selected[:requested_count]
 
 def send_otp_email(to_email, otp_code):
     mail_user = app.config['MAIL_USERNAME']
@@ -60,10 +195,16 @@ def send_otp_email(to_email, otp_code):
         msg['From'] = app.config['MAIL_FROM']
         msg['To'] = to_email
         msg.set_content(
-            f"Hello,\n\n"
-            f"Your One-Time Password (OTP) to reset your Flourish Forge Portal password is: {otp_code}\n"
-            f"This OTP is valid for 10 minutes.\n\n"
-            f"Regards,\nFlourish Forge (Director: Shivam Tiwari)"
+            f"Hello,
+
+"
+            f"Your One-Time Password (OTP) to reset your Flourish Forge Portal password is: {otp_code}
+"
+            f"This OTP is valid for 10 minutes.
+
+"
+            f"Regards,
+Flourish Forge (Director: Shivam Tiwari)"
         )
         with smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'], timeout=15) as server:
             server.starttls()
@@ -93,215 +234,82 @@ with app.app_context():
     admin_password = os.environ.get('ADMIN_PASSWORD', 'flourishforge123')
     admin = User.query.filter_by(role='admin').first()
     if not admin:
-        admin = User(
-            name='Shivam Tiwari',
-            email=admin_email,
-            role='admin'
-        )
+        admin = User(name='Shivam Tiwari', email=admin_email, role='admin')
         admin.set_password(admin_password)
         db.session.add(admin)
 
     if QuestionBank.query.count() == 0:
-        sample_qs = [
+        seed_qs = [
+            # Class 10 Maths & Science PYQs + MCQs
             QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Quadratic Equations',
                          question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='If 1/2 is a root of the equation x^2 + kx - 5/4 = 0, then the value of k is:',
+                         question_text='If 1/2 is a root of x^2 + kx - 5/4 = 0, then k equals:',
                          option_a='2', option_b='-2', option_c='1/4', option_d='1/2', answer_key='(A) 2'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Quadratic Equations',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='Which of the following is a quadratic equation?',
-                         option_a='x^2 + 2x + 1 = (4 - x)^2 + 3', option_b='-2x^2 = (5 - x)(2x - 2/5)',
-                         option_c='(k + 1)x^2 + (3/2)x = 7, where k = -1', option_d='x^3 - x^2 = (x - 1)^3',
-                         answer_key='(D) x^3 - x^2 = (x - 1)^3'),
             QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Polynomials',
                          question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='The zeroes of the quadratic polynomial x^2 + 99x + 127 are:',
-                         option_a='Both positive', option_b='Both negative',
-                         option_c='One positive and one negative', option_d='Both equal',
+                         question_text='The zeroes of x^2 + 99x + 127 are:',
+                         option_a='Both positive', option_b='Both negative', option_c='One positive, one negative', option_d='Equal',
                          answer_key='(B) Both negative'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Pair of Linear Equations',
-                         question_type='MCQ', difficulty='Medium', marks=1,
-                         question_text='If the lines given by 3x + 2ky = 2 and 2x + 5y + 1 = 0 are parallel, then value of k is:',
-                         option_a='-5/4', option_b='2/5', option_c='15/4', option_d='3/2',
-                         answer_key='(C) 15/4'),
             QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Arithmetic Progressions',
                          question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='The 10th term of the AP: 5, 8, 11, 14, ... is:',
+                         question_text='10th term of AP: 5, 8, 11, 14, ... is:',
                          option_a='32', option_b='35', option_c='29', option_d='38',
                          answer_key='(A) 32'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Triangles',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='In triangle ABC, DE || BC. If AD = 1.5 cm, BD = 3 cm, AE = 1 cm, then EC is:',
-                         option_a='1 cm', option_b='2 cm', option_c='3 cm', option_d='1.5 cm',
-                         answer_key='(B) 2 cm'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Coordinate Geometry',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='The distance of the point P(-6, 8) from the origin is:',
-                         option_a='8', option_b='2*sqrt(7)', option_c='10', option_d='6',
-                         answer_key='(C) 10'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Trigonometry',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='If sin A = 3/5, then cos A is equal to:',
-                         option_a='4/5', option_b='5/4', option_c='3/4', option_d='5/3',
-                         answer_key='(A) 4/5'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Circles',
-                         question_type='MCQ', difficulty='Medium', marks=1,
-                         question_text='From a point Q, the length of the tangent to a circle is 24 cm and distance of Q from centre is 25 cm. Radius is:',
-                         option_a='7 cm', option_b='12 cm', option_c='15 cm', option_d='24.5 cm',
-                         answer_key='(A) 7 cm'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Surface Areas and Volumes',
-                         question_type='MCQ', difficulty='Medium', marks=1,
-                         question_text='If two cubes each of volume 64 cm^3 are joined end to end, surface area of resulting cuboid is:',
-                         option_a='160 cm^2', option_b='192 cm^2', option_c='256 cm^2', option_d='128 cm^2',
-                         answer_key='(A) 160 cm^2'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Quadratic Equations',
-                         question_type='Subjective', difficulty='Easy', marks=2,
-                         question_text='Find the roots of the quadratic equation 2x^2 - 5x + 3 = 0 by factorisation.',
-                         answer_key='x = 1, x = 3/2'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Quadratic Equations',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text='Find the value of k for which the quadratic equation kx(x - 2) + 6 = 0 has two equal real roots.',
-                         answer_key='k = 6'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Trigonometry',
-                         question_type='Subjective', difficulty='HOTS', marks=4,
-                         question_text='Prove that (sin A + cosec A)^2 + (cos A + sec A)^2 = 7 + tan^2 A + cot^2 A.',
-                         answer_key='LHS = sin^2 A + cosec^2 A + 2 + cos^2 A + sec^2 A + 2 = 5 + (1+cot^2 A) + (1+tan^2 A) = RHS'),
-        ]
-        db.session.add_all(sample_qs)
-
-    if QuestionBank.query.count() <= 13:
-        extra_qs = [
-            # CLASS 10 PYQs & IMPORTANT QUESTIONS (Maths & Science)
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Real Numbers [PYQ 2012-2025]',
+            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Real Numbers',
                          question_type='Subjective', difficulty='Medium', marks=3,
                          question_text='[CBSE PYQ] Prove that sqrt(2) is an irrational number.',
-                         answer_key='Proof by contradiction: assume sqrt(2) = p/q coprime, 2q^2 = p^2 => contradiction.'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Real Numbers [Important]',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='[Important] The HCF and LCM of two numbers are 9 and 360. If one number is 45, the other number is:',
-                         option_a='72', option_b='81', option_c='90', option_d='108',
-                         answer_key='(A) 72'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Polynomials [PYQ 2014-2024]',
-                         question_type='Subjective', difficulty='Medium', marks=2,
-                         question_text='[CBSE PYQ] Find a quadratic polynomial whose zeroes are 5 + sqrt(2) and 5 - sqrt(2).',
-                         answer_key='x^2 - 10x + 23'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Arithmetic Progressions [PYQ 2011-2025]',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text='[CBSE PYQ] How many two-digit numbers are divisible by 3?',
-                         answer_key='30 (AP: 12, 15, ..., 99; a=12, d=3, a_n=99 => n=30)'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Coordinate Geometry [PYQ 2013-2025]',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text='[CBSE PYQ] Find the ratio in which the line segment joining A(1, -5) and B(-4, 5) is divided by the x-axis.',
-                         answer_key='1 : 1'),
-            QuestionBank(target_class='Class 10', subject='Mathematics', chapter='Circles [PYQ 2015-2025]',
-                         question_type='Subjective', difficulty='HOTS', marks=4,
-                         question_text='[CBSE PYQ] Prove that the lengths of tangents drawn from an external point to a circle are equal.',
-                         answer_key='Using RHS congruence on right triangles OPA and OPB, PA = PB.'),
-            QuestionBank(target_class='Class 10', subject='Science', chapter='Chemical Reactions and Equations [PYQ 2012-2025]',
+                         answer_key='Proof by contradiction assuming sqrt(2) = p/q in lowest terms.'),
+            QuestionBank(target_class='Class 10', subject='Science', chapter='Chemical Reactions and Equations',
                          question_type='Subjective', difficulty='Easy', marks=2,
                          question_text='[CBSE PYQ] Why should a magnesium ribbon be cleaned before burning in air?',
-                         answer_key='To remove the protective layer of basic magnesium carbonate/oxide so magnesium burns smoothly.'),
-            QuestionBank(target_class='Class 10', subject='Science', chapter='Acids, Bases and Salts [PYQ 2014-2024]',
+                         answer_key='To remove surface oxide/carbonate layer so combustion proceeds cleanly.'),
+            # Class 9 & Class 8 PYQs + MCQs
+            QuestionBank(target_class='Class 9', subject='Mathematics', chapter='Number Systems',
                          question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='[CBSE PYQ] Which of the following is used for disinfecting drinking water?',
-                         option_a='Baking soda', option_b='Washing soda', option_c='Bleaching powder', option_d='Gypsum',
-                         answer_key='(C) Bleaching powder'),
-            QuestionBank(target_class='Class 10', subject='Science', chapter='Carbon and its Compounds [PYQ 2013-2025]',
-                         question_type='Subjective', difficulty='HOTS', marks=4,
-                         question_text='[CBSE PYQ] What is homologous series? Explain with an example of alkanes and state two characteristics.',
-                         answer_key='Series of compounds with same functional group differing by -CH2- (14u); e.g. CH4, C2H6, C3H8.'),
-            QuestionBank(target_class='Class 10', subject='Science', chapter='Life Processes [PYQ 2015-2025]',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text='[CBSE PYQ] Differentiate between aerobic and anaerobic respiration with one example each.',
-                         answer_key='Aerobic: uses O2, complete breakdown, high ATP (mitochondria); Anaerobic: no O2, lactic acid/ethanol.'),
-            QuestionBank(target_class='Class 10', subject='Science', chapter='Magnetic Effects of Electric Current [PYQ 2012-2025]',
-                         question_type='MCQ', difficulty='Medium', marks=1,
-                         question_text='[CBSE PYQ] The device used for producing electric current is called a:',
-                         option_a='Ammeter', option_b='Galvanometer', option_c='Electric generator', option_d='Motor',
-                         answer_key='(C) Electric generator'),
-
-            # CLASS 9 PYQs & IMPORTANT QUESTIONS
-            QuestionBank(target_class='Class 9', subject='Mathematics', chapter='Number Systems [PYQ / Important]',
-                         question_type='Subjective', difficulty='Medium', marks=2,
-                         question_text='[PYQ / Important] Rationalise the denominator of 1 / (sqrt(7) - sqrt(6)).',
-                         answer_key='sqrt(7) + sqrt(6)'),
-            QuestionBank(target_class='Class 9', subject='Mathematics', chapter='Number Systems [Important]',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='[Important] Express 0.666... (0.6 bar) in the p/q form:',
+                         question_text='[PYQ] Express 0.666... in p/q form:',
                          option_a='6/10', option_b='2/3', option_c='1/3', option_d='6/99',
                          answer_key='(B) 2/3'),
-            QuestionBank(target_class='Class 9', subject='Mathematics', chapter='Polynomials [PYQ / Important]',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text='[PYQ / Important] Factorise: 27x^3 + y^3 + z^3 - 9xyz using algebraic identities.',
-                         answer_key='(3x + y + z)(9x^2 + y^2 + z^2 - 3xy - yz - 3xz)'),
-            QuestionBank(target_class='Class 9', subject='Mathematics', chapter='Lines and Angles [PYQ / Important]',
-                         question_type='Subjective', difficulty='HOTS', marks=4,
-                         question_text='[PYQ / Important] Prove that the sum of the three angles of a triangle is 180 degrees.',
-                         answer_key='Draw line parallel to base through opposite vertex; alternate interior angles sum to 180 deg.'),
-            QuestionBank(target_class='Class 9', subject='Science', chapter='Matter in Our Surroundings [PYQ / Important]',
+            QuestionBank(target_class='Class 9', subject='Science', chapter='Matter in Our Surroundings',
                          question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='[PYQ / Important] Convert 300 K into Celsius scale:',
+                         question_text='[PYQ] Convert 300 K into Celsius scale:',
                          option_a='27 deg C', option_b='573 deg C', option_c='273 deg C', option_d='30 deg C',
-                         answer_key='(A) 27 deg C (300 - 273 = 27)'),
-            QuestionBank(target_class='Class 9', subject='Science', chapter='Force and Laws of Motion [PYQ / Important]',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text="[PYQ / Important] State Newton's second law of motion and derive F = ma.",
-                         answer_key='Rate of change of momentum is proportional to applied force in direction of force; F = k*m*a => F = ma.'),
-            QuestionBank(target_class='Class 9', subject='Science', chapter='The Fundamental Unit of Life [Important]',
+                         answer_key='(A) 27 deg C'),
+            QuestionBank(target_class='Class 8', subject='Mathematics', chapter='Linear Equations in One Variable',
                          question_type='Subjective', difficulty='Easy', marks=2,
-                         question_text='[Important] Why is the mitochondria known as the powerhouse of the cell?',
-                         answer_key='Generates ATP (energy currency of the cell) through cellular respiration.'),
-
-            # CLASS 8 PYQs & IMPORTANT QUESTIONS
-            QuestionBank(target_class='Class 8', subject='Mathematics', chapter='Linear Equations in One Variable [PYQ / Important]',
-                         question_type='Subjective', difficulty='Easy', marks=2,
-                         question_text='[PYQ / Important] Solve: (2x - 3) / (3x + 2) = -2/3.',
-                         answer_key='6x - 9 = -6x - 4 => 12x = 5 => x = 5/12'),
-            QuestionBank(target_class='Class 8', subject='Mathematics', chapter='Squares and Square Roots [PYQ / Important]',
+                         question_text='[PYQ] Solve: (2x - 3) / (3x + 2) = -2/3.',
+                         answer_key='x = 5/12'),
+            QuestionBank(target_class='Class 8', subject='Science', chapter='Force and Pressure',
                          question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='[PYQ / Important] What is the ones digit of the square of 272?',
-                         option_a='2', option_b='4', option_c='6', option_d='8',
-                         answer_key='(B) 4 (2^2 = 4)'),
-            QuestionBank(target_class='Class 8', subject='Mathematics', chapter='Mensuration [Important]',
-                         question_type='Subjective', difficulty='Medium', marks=3,
-                         question_text='[Important] Find the total surface area of a cylinder of radius 7 cm and height 10 cm.',
-                         answer_key='TSA = 2*pi*r*(r + h) = 2*(22/7)*7*(7 + 10) = 44 * 17 = 748 cm^2'),
-            QuestionBank(target_class='Class 8', subject='Science', chapter='Force and Pressure [PYQ / Important]',
-                         question_type='MCQ', difficulty='Easy', marks=1,
-                         question_text='[PYQ / Important] Pressure is defined as:',
+                         question_text='[PYQ] Pressure is defined as:',
                          option_a='Force x Area', option_b='Force / Area', option_c='Area / Force', option_d='Mass / Volume',
                          answer_key='(B) Force / Area'),
-            QuestionBank(target_class='Class 8', subject='Science', chapter='Chemical Effects of Electric Current [PYQ / Important]',
-                         question_type='Subjective', difficulty='Medium', marks=2,
-                         question_text='[PYQ / Important] What is electroplating? Give one practical use.',
-                         answer_key='Deposition of a desired metal layer on another material using electricity; e.g., chromium on taps/cycle parts.'),
         ]
-        for eq in extra_qs:
-            exists = QuestionBank.query.filter_by(
-                target_class=eq.target_class,
-                subject=eq.subject,
-                question_text=eq.question_text
-            ).first()
-            if not exists:
-                db.session.add(eq)
+        db.session.add_all(seed_qs)
 
-    latest_ncert_seed = [
-        StudyMaterial(title='Latest CBSE NCERT — Class 10 Mathematics (Rationalised Syllabus)', target_class='Class 10',
-                      subject='Mathematics', filename='NCERT_Latest_Class_10_Mathematics.txt', uploaded_by='Flourish Forge'),
-        StudyMaterial(title='Latest CBSE NCERT — Class 10 Science (Rationalised Syllabus)', target_class='Class 10',
-                      subject='Science', filename='NCERT_Latest_Class_10_Science.txt', uploaded_by='Flourish Forge'),
-        StudyMaterial(title='Latest CBSE NCERT — Class 9 Mathematics (Rationalised Syllabus)', target_class='Class 9',
-                      subject='Mathematics', filename='NCERT_Latest_Class_9_Mathematics.txt', uploaded_by='Flourish Forge'),
-        StudyMaterial(title='Latest CBSE NCERT — Class 9 Science (Rationalised Syllabus)', target_class='Class 9',
-                      subject='Science', filename='NCERT_Latest_Class_9_Science.txt', uploaded_by='Flourish Forge'),
-        StudyMaterial(title='Latest CBSE NCERT — Class 8 Mathematics (Latest CBSE Syllabus)', target_class='Class 8',
-                      subject='Mathematics', filename='NCERT_Latest_Class_8_Mathematics.txt', uploaded_by='Flourish Forge'),
-        StudyMaterial(title='Latest CBSE NCERT — Class 8 Science (Latest CBSE Syllabus)', target_class='Class 8',
-                      subject='Science', filename='NCERT_Latest_Class_8_Science_Curiosity.txt', uploaded_by='Flourish Forge'),
-    ]
-    for item in latest_ncert_seed:
-        if not StudyMaterial.query.filter_by(filename=item.filename).first():
-            db.session.add(item)
+    if OnlineExam.query.count() == 0:
+        demo_exam = OnlineExam(
+            title='Class 10 Maths — Quick Practice Quiz (5 MCQs)',
+            target_class='Class 10',
+            subject='Mathematics',
+            chapter='Quadratic Equations & AP',
+            created_by='Flourish Forge'
+        )
+        db.session.add(demo_exam)
+        db.session.flush()
+        demo_mcqs = [
+            ExamMCQ(exam_id=demo_exam.id, question_text='Discriminant D of ax^2 + bx + c = 0 is:',
+                    option_a='b^2 - 4ac', option_b='b^2 + 4ac', option_c='4ac - b^2', option_d='2ab', correct_option='A', marks=1),
+            ExamMCQ(exam_id=demo_exam.id, question_text='If D = 0 for a quadratic equation, roots are:',
+                    option_a='Real and equal', option_b='Distinct real', option_c='No real roots', option_d='Imaginary', correct_option='A', marks=1),
+            ExamMCQ(exam_id=demo_exam.id, question_text='Common difference of AP 2, 7, 12, 17, ... is:',
+                    option_a='3', option_b='5', option_c='7', option_d='2', correct_option='B', marks=1),
+            ExamMCQ(exam_id=demo_exam.id, question_text='Sum of first n natural numbers is:',
+                    option_a='n(n+1)/2', option_b='n(n-1)/2', option_c='n^2', option_d='2n', correct_option='A', marks=1),
+            ExamMCQ(exam_id=demo_exam.id, question_text='Roots of x^2 - 9 = 0 are:',
+                    option_a='+3 and -3', option_b='9 and -9', option_c='0 and 9', option_d='1 and 9', correct_option='A', marks=1),
+        ]
+        db.session.add_all(demo_mcqs)
+
     db.session.commit()
 
 @app.route('/', methods=['GET', 'POST'])
@@ -394,26 +402,21 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ---------------- ADMIN (DIRECTOR) ROUTES ----------------
+# ---------------- ADMIN ROUTES ----------------
 @app.route('/admin')
 @login_required
 @role_required('admin')
 def admin_dashboard():
     teachers = User.query.filter_by(role='teacher').all()
     students = User.query.filter_by(role='student').all()
-    fees = FeeRecord.query.order_by(FeeRecord.id.desc()).all()
     notices = Notice.query.order_by(Notice.created_at.desc()).all()
-    total_collected = sum(f.amount for f in fees if f.status == 'Paid')
-    total_pending = sum(f.amount for f in fees if f.status == 'Pending')
     return render_template(
         'admin_dashboard.html',
         classes=CLASSES_7_TO_12,
         teachers=teachers,
         students=students,
-        fees=fees,
         notices=notices,
-        total_collected=total_collected,
-        total_pending=total_pending
+        ncert_links=NCERT_OFFICIAL_LINKS
     )
 
 @app.route('/admin/add_user', methods=['POST'])
@@ -432,11 +435,8 @@ def add_user():
         flash('Email already registered!', 'warning')
     else:
         new_user = User(
-            name=name,
-            email=email,
-            role=role,
-            student_class=student_class,
-            batch_timing=batch_timing,
+            name=name, email=email, role=role,
+            student_class=student_class, batch_timing=batch_timing,
             subject_specialty=subject_specialty
         )
         new_user.set_password(password)
@@ -471,32 +471,6 @@ def add_notice():
     flash('Announcement published to portal!', 'success')
     return redirect(url_for('admin_dashboard'))
 
-@app.route('/admin/add_fee', methods=['POST'])
-@login_required
-@role_required('admin')
-def add_fee():
-    next_num = FeeRecord.query.count() + 101
-    receipt_no = f"FF-{datetime.utcnow().strftime('%Y%m')}-{next_num}"
-    fee = FeeRecord(
-        receipt_no=receipt_no,
-        student_id=int(request.form.get('student_id')),
-        month=request.form.get('month'),
-        amount=int(request.form.get('amount')),
-        payment_mode=request.form.get('payment_mode', 'UPI'),
-        status=request.form.get('status')
-    )
-    db.session.add(fee)
-    db.session.commit()
-    flash(f'Monthly fee recorded (Receipt: {receipt_no}).', 'success')
-    return redirect(url_for('fee_receipt', fee_id=fee.id))
-
-@app.route('/admin/receipt/<int:fee_id>')
-@login_required
-@role_required('admin')
-def fee_receipt(fee_id):
-    fee = FeeRecord.query.get_or_404(fee_id)
-    return render_template('fee_receipt.html', fee=fee)
-
 # ---------------- TEACHER ROUTES ----------------
 @app.route('/teacher')
 @login_required
@@ -508,21 +482,19 @@ def teacher_dashboard():
     ).all()
     materials = StudyMaterial.query.order_by(StudyMaterial.uploaded_at.desc()).all()
     doubts = DoubtTicket.query.order_by(DoubtTicket.created_at.desc()).all()
+    exams = OnlineExam.query.order_by(OnlineExam.created_at.desc()).all()
 
     filter_cls = request.args.get('filter_class', '')
     filter_sub = request.args.get('filter_subject', '').strip()
+    filter_chap = request.args.get('filter_chapter', '').strip()
     q_query = QuestionBank.query
     if filter_cls:
         q_query = q_query.filter_by(target_class=filter_cls)
     if filter_sub:
         q_query = q_query.filter(QuestionBank.subject.ilike(f"%{filter_sub}%"))
+    if filter_chap:
+        q_query = q_query.filter(QuestionBank.chapter.ilike(f"%{filter_chap}%"))
     questions = q_query.order_by(QuestionBank.id.desc()).all()
-
-    flagged_students = []
-    for s in students:
-        recent = Attendance.query.filter_by(student_id=s.id).order_by(Attendance.att_date.desc()).limit(2).all()
-        if len(recent) >= 2 and all(r.status == 'Absent' for r in recent):
-            flagged_students.append(s)
 
     return render_template(
         'teacher_dashboard.html',
@@ -531,10 +503,13 @@ def teacher_dashboard():
         materials=materials,
         doubts=doubts,
         questions=questions,
+        exams=exams,
         filter_cls=filter_cls,
         filter_sub=filter_sub,
-        flagged_students=flagged_students,
+        filter_chap=filter_chap,
         faculty_list=faculty_list,
+        ncert_links=NCERT_OFFICIAL_LINKS,
+        chatgpt_enabled=bool(app.config['OPENAI_API_KEY']),
         today_str=date.today().isoformat()
     )
 
@@ -573,7 +548,7 @@ def update_teacher_profile():
         current_user.profile_photo = unique_photo
 
     db.session.commit()
-    flash('Faculty profile, education, experience & photo updated on dashboard!', 'success')
+    flash('Faculty profile updated (optional).', 'success')
     return redirect(url_for('teacher_dashboard'))
 
 @app.route('/teacher/mark_attendance', methods=['POST'])
@@ -593,10 +568,8 @@ def mark_attendance():
                 existing.marked_by = current_user.name
             else:
                 db.session.add(Attendance(
-                    student_id=s.id,
-                    att_date=att_date_obj,
-                    status=status,
-                    marked_by=current_user.name
+                    student_id=s.id, att_date=att_date_obj,
+                    status=status, marked_by=current_user.name
                 ))
             count += 1
     db.session.commit()
@@ -619,11 +592,7 @@ def add_score():
     )
     db.session.add(score)
     db.session.commit()
-    pct = (marks_obtained / max_marks) * 100 if max_marks > 0 else 0
-    if pct < 50:
-        flash(f'Score published ({pct:.1f}%). Low score alert (<50%) flagged for remedial follow-up!', 'warning')
-    else:
-        flash('Test marks published!', 'success')
+    flash('Test marks published!', 'success')
     return redirect(url_for('teacher_dashboard'))
 
 @app.route('/teacher/upload_material', methods=['POST'])
@@ -633,7 +602,7 @@ def upload_material():
     file = request.files.get('file')
     if file and file.filename:
         if not allowed_file(file.filename):
-            flash('Unsupported file type. Allowed: PDF, DOC/DOCX, PPT/PPTX, TXT, PNG, JPG, JPEG, WEBP.', 'warning')
+            flash('Unsupported file type.', 'warning')
             return redirect(url_for('teacher_dashboard'))
         safe_name = secure_filename(file.filename)
         unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe_name}"
@@ -684,7 +653,30 @@ def add_question():
     )
     db.session.add(q)
     db.session.commit()
-    flash(f'{q_type} question added to Flourish Forge Question Bank!', 'success')
+    flash(f'{q_type} question added to Question Bank!', 'success')
+    return redirect(url_for('teacher_dashboard'))
+
+@app.route('/teacher/auto_generate_chapter_bank', methods=['POST'])
+@login_required
+@role_required('teacher', 'admin')
+def auto_generate_chapter_bank():
+    target_class = request.form.get('target_class')
+    subject = request.form.get('subject', '').strip()
+    chapters_raw = request.form.get('chapters', '').strip()
+    mcq_n = max(0, int(request.form.get('mcq_count', 0)))
+    subj_n = max(0, int(request.form.get('subj_count', 0)))
+
+    chapter_list = [c.strip() for c in chapters_raw.split(',') if c.strip()] or ['General Chapter']
+    added_count = 0
+    for ch in chapter_list:
+        for i in range(1, mcq_n + 1):
+            db.session.add(build_auto_mcq(target_class, subject, ch, i, 'Medium'))
+            added_count += 1
+        for j in range(1, subj_n + 1):
+            db.session.add(build_auto_subjective(target_class, subject, ch, j, 'Medium'))
+            added_count += 1
+    db.session.commit()
+    flash(f'Auto-generated {added_count} chapter-wise questions across {len(chapter_list)} chapter(s) in Question Bank!', 'success')
     return redirect(url_for('teacher_dashboard'))
 
 @app.route('/teacher/edit_question/<int:q_id>', methods=['GET', 'POST'])
@@ -729,42 +721,46 @@ def delete_question(q_id):
 def generate_paper():
     target_class = request.form.get('target_class')
     subject = request.form.get('subject', '').strip()
-    exam_title = request.form.get('exam_title') or 'Chapter Assessment Test'
+    chapters_raw = request.form.get('chapters', '').strip()
+    exam_title = request.form.get('exam_title') or 'Chapter-Wise Assessment Test'
     duration = request.form.get('duration') or '1 Hour 30 Mins'
+
+    # Exact counts strictly honored
     mcq_n = max(0, int(request.form.get('mcq_count', 0)))
-    easy_n = max(0, int(request.form.get('easy_count', 0)))
-    med_n = max(0, int(request.form.get('medium_count', 0)))
-    hots_n = max(0, int(request.form.get('hots_count', 0)))
+    subj_n = max(0, int(request.form.get('subj_count', 0)))
+
+    chapter_list = [c.strip() for c in chapters_raw.split(',') if c.strip()]
+    primary_chapter = chapter_list[0] if chapter_list else 'Full Syllabus'
 
     base_q = QuestionBank.query.filter(
         QuestionBank.target_class == target_class,
         QuestionBank.subject.ilike(f"%{subject}%")
     )
+    if chapter_list:
+        chap_clauses = [QuestionBank.chapter.ilike(f"%{ch}%") for ch in chapter_list]
+        base_q = base_q.filter(db.or_(*chap_clauses))
+
     mcq_pool = base_q.filter_by(question_type='MCQ').all()
-    subj_q = base_q.filter_by(question_type='Subjective')
-    easy_pool = subj_q.filter_by(difficulty='Easy').all()
-    med_pool = subj_q.filter_by(difficulty='Medium').all()
-    hots_pool = subj_q.filter_by(difficulty='HOTS').all()
+    subj_pool = base_q.filter_by(question_type='Subjective').all()
 
-    if mcq_n > len(mcq_pool):
-        flash(
-            f"You requested {mcq_n} MCQs, but only {len(mcq_pool)} MCQ(s) exist in Question Bank for {target_class} ({subject}). "
-            f"All {len(mcq_pool)} available MCQs were included; add more MCQs in Question Bank to reach {mcq_n}.",
-            'warning'
-        )
-
-    selected_mcqs = random.sample(mcq_pool, min(mcq_n, len(mcq_pool)))
-    selected_subj = (
-        random.sample(easy_pool, min(easy_n, len(easy_pool))) +
-        random.sample(med_pool, min(med_n, len(med_pool))) +
-        random.sample(hots_pool, min(hots_n, len(hots_pool)))
+    selected_mcqs = pick_exact_questions(
+        mcq_pool, mcq_n,
+        lambda idx: build_auto_mcq(target_class, subject, chapter_list[(idx - 1) % len(chapter_list)] if chapter_list else primary_chapter, idx)
     )
+    selected_subj = pick_exact_questions(
+        subj_pool, subj_n,
+        lambda idx: build_auto_subjective(target_class, subject, chapter_list[(idx - 1) % len(chapter_list)] if chapter_list else primary_chapter, idx)
+    )
+
     all_selected = selected_mcqs + selected_subj
     total_marks = sum(q.marks for q in all_selected)
+    chapter_display = ", ".join(chapter_list) if chapter_list else "All Chapters"
+
     return render_template(
         'generated_paper.html',
         target_class=target_class,
         subject=subject,
+        chapter_display=chapter_display,
         exam_title=exam_title,
         duration=duration,
         mcqs=selected_mcqs,
@@ -774,52 +770,187 @@ def generate_paper():
         today=date.today().strftime('%d-%b-%Y')
     )
 
+@app.route('/teacher/create_online_exam', methods=['POST'])
+@login_required
+@role_required('teacher', 'admin')
+def create_online_exam():
+    title = request.form.get('title', '').strip() or 'Online MCQ Test'
+    target_class = request.form.get('target_class')
+    subject = request.form.get('subject', '').strip()
+    chapter = request.form.get('chapter', '').strip() or 'Chapter Test'
+    mcq_count = max(1, min(50, int(request.form.get('mcq_count', 20))))
+    bulk_text = request.form.get('bulk_mcqs', '').strip()
+
+    exam = OnlineExam(
+        title=title, target_class=target_class, subject=subject,
+        chapter=chapter, created_by=current_user.name
+    )
+    db.session.add(exam)
+    db.session.flush()
+
+    parsed_mcqs = []
+    if bulk_text:
+        for line in bulk_text.splitlines():
+            line = line.strip()
+            if not line or '|' not in line:
+                continue
+            parts = [p.strip() for p in line.split('|')]
+            if len(parts) >= 6:
+                corr = parts[5].upper()[:1]
+                if corr not in ('A', 'B', 'C', 'D'):
+                    corr = 'A'
+                parsed_mcqs.append(ExamMCQ(
+                    exam_id=exam.id,
+                    question_text=parts[0],
+                    option_a=parts[1],
+                    option_b=parts[2],
+                    option_c=parts[3],
+                    option_d=parts[4],
+                    correct_option=corr,
+                    marks=1
+                ))
+
+    # Pull from QuestionBank or auto-generate up to exact mcq_count
+    bank_mcqs = QuestionBank.query.filter(
+        QuestionBank.target_class == target_class,
+        QuestionBank.subject.ilike(f"%{subject}%"),
+        QuestionBank.question_type == 'MCQ',
+        QuestionBank.option_a.isnot(None),
+        QuestionBank.option_b.isnot(None),
+        QuestionBank.option_c.isnot(None),
+        QuestionBank.option_d.isnot(None)
+    ).all()
+    random.shuffle(bank_mcqs)
+
+    for bq in bank_mcqs:
+        if len(parsed_mcqs) >= mcq_count:
+            break
+        ans_raw = (bq.answer_key or 'A').strip().upper()
+        corr = 'A'
+        for ch_let in ('A', 'B', 'C', 'D'):
+            if ans_raw.startswith(ch_let) or f"({ch_let})" in ans_raw:
+                corr = ch_let
+                break
+        parsed_mcqs.append(ExamMCQ(
+            exam_id=exam.id,
+            question_text=bq.question_text,
+            option_a=bq.option_a,
+            option_b=bq.option_b,
+            option_c=bq.option_c,
+            option_d=bq.option_d,
+            correct_option=corr,
+            marks=1
+        ))
+
+    auto_num = 1
+    while len(parsed_mcqs) < mcq_count:
+        gen_q = build_auto_mcq(target_class, subject, chapter, auto_num)
+        ans_raw = (gen_q.answer_key or 'A').strip().upper()
+        corr = 'B' if '(B)' in ans_raw else ('C' if '(C)' in ans_raw else ('D' if '(D)' in ans_raw else 'A'))
+        parsed_mcqs.append(ExamMCQ(
+            exam_id=exam.id,
+            question_text=gen_q.question_text,
+            option_a=gen_q.option_a,
+            option_b=gen_q.option_b,
+            option_c=gen_q.option_c,
+            option_d=gen_q.option_d,
+            correct_option=corr,
+            marks=1
+        ))
+        auto_num += 1
+
+    final_mcqs = parsed_mcqs[:mcq_count]
+    db.session.add_all(final_mcqs)
+    db.session.commit()
+    flash(f'Online MCQ Exam "{title}" published with {len(final_mcqs)} MCQs for {target_class}!', 'success')
+    return redirect(url_for('teacher_dashboard'))
+
 # ---------------- STUDENT ROUTES ----------------
 @app.route('/student')
 @login_required
 @role_required('student')
 def student_dashboard():
     scores = TestScore.query.filter_by(student_id=current_user.id).all()
+    attempts = ExamAttempt.query.filter_by(student_id=current_user.id).order_by(ExamAttempt.submitted_at.desc()).all()
+    available_exams = OnlineExam.query.filter(
+        (OnlineExam.target_class == current_user.student_class) | (OnlineExam.target_class.is_(None))
+    ).order_by(OnlineExam.created_at.desc()).all()
+    if not available_exams:
+        available_exams = OnlineExam.query.order_by(OnlineExam.created_at.desc()).all()
+
     faculty_list = User.query.filter(User.role.in_(['teacher', 'admin'])).order_by(
         User.experience_years.desc().nullslast(), User.id.asc()
     ).all()
     materials = StudyMaterial.query.filter_by(target_class=current_user.student_class).order_by(StudyMaterial.uploaded_at.desc()).all()
-    fees = FeeRecord.query.filter_by(student_id=current_user.id).all()
     doubts = DoubtTicket.query.filter_by(student_id=current_user.id).all()
-    att_records = Attendance.query.filter_by(student_id=current_user.id).order_by(Attendance.att_date.desc()).all()
     notices = Notice.query.filter(
         (Notice.target_class == 'All Classes') | (Notice.target_class == current_user.student_class)
     ).order_by(Notice.created_at.desc()).all()
 
-    total_days = len(att_records)
-    present_days = sum(1 for a in att_records if a.status == 'Present')
-    att_pct = round((present_days / total_days) * 100, 1) if total_days > 0 else 100.0
-
-    batch_avgs = []
-    for s in scores:
-        peer_scores = TestScore.query.join(User).filter(
-            User.student_class == current_user.student_class,
-            TestScore.subject == s.subject,
-            TestScore.chapter == s.chapter
-        ).all()
-        if peer_scores:
-            avg_val = sum((p.marks_obtained / p.max_marks) * 100 for p in peer_scores) / len(peer_scores)
-            batch_avgs.append(round(avg_val, 1))
-        else:
-            batch_avgs.append(0)
-
     return render_template(
         'student_dashboard.html',
         scores=scores,
-        batch_avgs=batch_avgs,
+        attempts=attempts,
+        available_exams=available_exams,
         materials=materials,
-        fees=fees,
         doubts=doubts,
-        att_records=att_records,
-        att_pct=att_pct,
         notices=notices,
-        faculty_list=faculty_list
+        faculty_list=faculty_list,
+        ncert_links=NCERT_OFFICIAL_LINKS
     )
+
+@app.route('/student/exam/<int:exam_id>', methods=['GET', 'POST'])
+@login_required
+@role_required('student')
+def attempt_exam(exam_id):
+    exam = OnlineExam.query.get_or_404(exam_id)
+    if request.method == 'POST':
+        correct_cnt = 0
+        earned_marks = 0
+        total_marks = sum(q.marks for q in exam.questions)
+        for q in exam.questions:
+            chosen = request.form.get(f'q_{q.id}', '').strip().upper()
+            if chosen == q.correct_option:
+                correct_cnt += 1
+                earned_marks += q.marks
+
+        total_q = len(exam.questions)
+        pct = round((earned_marks / total_marks) * 100, 1) if total_marks > 0 else 0.0
+
+        attempt = ExamAttempt(
+            exam_id=exam.id,
+            student_id=current_user.id,
+            score=earned_marks,
+            total_marks=total_marks,
+            correct_count=correct_cnt,
+            total_questions=total_q,
+            percentage=pct
+        )
+        db.session.add(attempt)
+
+        # Also record in TestScore so performance chart reflects online exam
+        db.session.add(TestScore(
+            student_id=current_user.id,
+            subject=exam.subject,
+            chapter=exam.chapter,
+            marks_obtained=earned_marks,
+            max_marks=total_marks,
+            remarks=f"Online MCQ Exam: {exam.title} ({correct_cnt}/{total_q} correct)"
+        ))
+        db.session.commit()
+        flash(f'Exam submitted! Auto-generated score: {earned_marks}/{total_marks} ({pct}%)', 'success')
+        return redirect(url_for('exam_result', attempt_id=attempt.id))
+
+    return render_template('attempt_exam.html', exam=exam)
+
+@app.route('/student/exam-result/<int:attempt_id>')
+@login_required
+@role_required('student')
+def exam_result(attempt_id):
+    attempt = ExamAttempt.query.get_or_404(attempt_id)
+    if attempt.student_id != current_user.id:
+        abort(403)
+    return render_template('exam_result.html', attempt=attempt)
 
 @app.route('/student/ask_doubt', methods=['POST'])
 @login_required
