@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Fee Receipt {{ fee.receipt_no }} - Flourish Forge{% endblock %}
+{% block content %}
+<div class="mb-3 no-print d-flex justify-content-between">
+  <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">&larr; Back to Admin Dashboard</a>
+  <button onclick="window.print()" class="btn btn-success">Print Monthly Fee Receipt</button>
+</div>
+
+<div class="card border-dark shadow-sm mx-auto" style="max-width: 720px;">
+  <div class="card-header bg-white border-dark text-center py-3">
+    <h3 class="fw-bold mb-1 text-uppercase">Flourish Forge</h3>
+    <div class="fw-semibold">Director: Shivam Tiwari | B.Sc. (Hons.) Computer Science, University of Delhi</div>
+    <div class="small text-muted">Monthly Tuition Fee Receipt (CBSE Classes 7–12)</div>
+  </div>
+  <div class="card-body p-4">
+    <div class="row mb-3">
+      <div class="col-6"><strong>Receipt No:</strong> {{ fee.receipt_no }}</div>
+      <div class="col-6 text-end"><strong>Date:</strong> {{ fee.updated_at.strftime('%d-%b-%Y') }}</div>
+    </div>
+    <table class="table table-bordered">
+      <tbody>
+        <tr>
+          <th width="35%">Student Name</th>
+          <td>{{ fee.student.name }} ({{ fee.student.email }})</td>
+        </tr>
+        <tr>
+          <th>Class &amp; Batch</th>
+          <td>{{ fee.student.student_class or 'N/A' }} {% if fee.student.batch_timing %}({{ fee.student.batch_timing }}){% endif %}</td>
+        </tr>
+        <tr>
+          <th>Billing Month</th>
+          <td>{{ fee.month }}</td>
+        </tr>
+        <tr>
+          <th>Payment Mode</th>
+          <td>{{ fee.payment_mode }}</td>
+        </tr>
+        <tr>
+          <th>Fee Status</th>
+          <td><strong>{{ fee.status }}</strong></td>
+        </tr>
+        <tr class="table-light">
+          <th>Amount Paid / Billed</th>
+          <td class="fs-5 fw-bold">&#8377; {{ fee.amount }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="row mt-5 pt-2">
+      <div class="col-6 small text-muted">Computer-generated receipt from Flourish Forge Portal.</div>
+      <div class="col-6 text-end">
+        <div class="fw-bold">Shivam Tiwari</div>
+        <div class="small">Director, Flourish Forge (B.Sc. (Hons.) CS, DU)</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

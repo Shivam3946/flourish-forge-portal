@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Login - Flourish Forge{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-4">
+  <div class="col-md-5">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white text-center">
+        <h4 class="mb-0">Flourish Forge Portal Login</h4>
+        <small>CBSE Classes 7–12 | Director: Shivam Tiwari (B.Sc. (Hons.) CS, DU)</small>
+      </div>
+      <div class="card-body p-4">
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label">Email Address</label>
+            <input type="email" name="email" class="form-control" required placeholder="name@example.com">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Sign In</button>
+        </form>
+        <hr>
+        <div class="small text-muted">
+          <strong>Default Director Login:</strong> <code>director@flourishforge.in</code> / <code>flourishforge123</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

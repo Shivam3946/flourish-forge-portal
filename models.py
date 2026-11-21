@@ -1,0 +1,106 @@
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, date
+
+db = SQLAlchemy()
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    role = db.Column(db.String(20), nullable=False)  # 'admin', 'teacher', 'student'
+    student_class = db.Column(db.String(15), nullable=True)  # 'Class 7' .. 'Class 12'
+    batch_timing = db.Column(db.String(50), nullable=True)   # e.g. '4:00 PM - 5:30 PM'
+    subject_specialty = db.Column(db.String(50), nullable=True)  # For teachers
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+class Attendance(db.Model):
+    __tablename__ = 'attendance'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    att_date = db.Column(db.Date, default=date.today, nullable=False)
+    status = db.Column(db.String(15), nullable=False)  # 'Present' or 'Absent'
+    marked_by = db.Column(db.String(100), nullable=False)
+
+    student = db.relationship('User', backref='attendance_records')
+
+class TestScore(db.Model):
+    __tablename__ = 'test_scores'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    subject = db.Column(db.String(50), nullable=False)
+    chapter = db.Column(db.String(100), nullable=False)
+    marks_obtained = db.Column(db.Float, nullable=False)
+    max_marks = db.Column(db.Float, nullable=False)
+    remarks = db.Column(db.String(200))
+    date_recorded = db.Column(db.Date, default=date.today)
+
+    student = db.relationship('User', backref='scores')
+
+class FeeRecord(db.Model):
+    __tablename__ = 'fee_records'
+    id = db.Column(db.Integer, primary_key=True)
+    receipt_no = db.Column(db.String(30), unique=True, nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    month = db.Column(db.String(30), nullable=False)
+    amount = db.Column(db.Integer, nullable=False)
+    payment_mode = db.Column(db.String(30), default='UPI')
+    status = db.Column(db.String(20), default='Paid')  # 'Paid' or 'Pending'
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('User', backref='fees')
+
+class StudyMaterial(db.Model):
+    __tablename__ = 'study_materials'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    target_class = db.Column(db.String(15), nullable=False)
+    subject = db.Column(db.String(50), nullable=False)
+    filename = db.Column(db.String(200), nullable=False)
+    uploaded_by = db.Column(db.String(100), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class DoubtTicket(db.Model):
+    __tablename__ = 'doubt_tickets'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    subject = db.Column(db.String(50), nullable=False)
+    question = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), default='Open')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('User', backref='doubts')
+
+class QuestionBank(db.Model):
+    __tablename__ = 'question_bank'
+    id = db.Column(db.Integer, primary_key=True)
+    target_class = db.Column(db.String(15), nullable=False)
+    subject = db.Column(db.String(50), nullable=False)
+    chapter = db.Column(db.String(100), nullable=False)
+    question_type = db.Column(db.String(20), nullable=False, default='Subjective')  # 'MCQ' or 'Subjective'
+    difficulty = db.Column(db.String(20), nullable=False)  # 'Easy', 'Medium', 'HOTS'
+    marks = db.Column(db.Integer, nullable=False, default=1)
+    question_text = db.Column(db.Text, nullable=False)
+    option_a = db.Column(db.String(250), nullable=True)
+    option_b = db.Column(db.String(250), nullable=True)
+    option_c = db.Column(db.String(250), nullable=True)
+    option_d = db.Column(db.String(250), nullable=True)
+    answer_key = db.Column(db.Text, nullable=True)
+
+class Notice(db.Model):
+    __tablename__ = 'notices'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    target_class = db.Column(db.String(20), default='All Classes')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Director Dashboard - Flourish Forge{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="mb-0">Director Control Panel — Flourish Forge</h3>
+    <small class="text-muted">Shivam Tiwari, B.Sc. (Hons.) Computer Science, University of Delhi | CBSE Classes 7–12</small>
+  </div>
+  <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-outline-primary btn-sm">Open Faculty Workspace &rarr;</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card text-bg-primary"><div class="card-body"><h6>Total Students (7–12)</h6><h3>{{ students|length }}</h3></div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-bg-info text-dark"><div class="card-body"><h6>Teachers</h6><h3>{{ teachers|length }}</h3></div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-bg-success"><div class="card-body"><h6>Fees Collected</h6><h3>&#8377; {{ total_collected }}</h3></div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-bg-warning text-dark"><div class="card-body"><h6>Pending Fees</h6><h3>&#8377; {{ total_pending }}</h3></div></div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-bold">Enroll Student (Class 7–12) / Add Teacher</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_user') }}">
+          <div class="mb-2"><input type="text" name="name" class="form-control" placeholder="Full Name" required></div>
+          <div class="mb-2"><input type="email" name="email" class="form-control" placeholder="Email Address" required></div>
+          <div class="mb-2"><input type="password" name="password" class="form-control" placeholder="Initial Password" required></div>
+          <div class="mb-2">
+            <select name="role" class="form-select" required>
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+            </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <select name="student_class" class="form-select">
+                <option value="">Class (7–12)</option>
+                {% for cls in classes %}
+                  <option value="{{ cls }}">{{ cls }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <input type="text" name="batch_timing" class="form-control" placeholder="Batch Timing (e.g. 4–5 PM)">
+            </div>
+          </div>
+          <div class="mb-3"><input type="text" name="subject_specialty" class="form-control" placeholder="Teacher Subject (e.g. Maths, Science, English)"></div>
+          <button type="submit" class="btn btn-primary w-100">Create Account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-bold">Record Monthly Fee &amp; Generate Receipt</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_fee') }}">
+          <div class="mb-2">
+            <select name="student_id" class="form-select" required>
+              <option value="">Select Student (Class 7–12)</option>
+              {% for s in students %}
+                <option value="{{ s.id }}">{{ s.name }} ({{ s.student_class }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2"><input type="text" name="month" class="form-control" placeholder="Month (e.g. November 2026)" required></div>
+          <div class="mb-2"><input type="number" name="amount" class="form-control" placeholder="Monthly Fee Amount (INR)" required></div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <select name="payment_mode" class="form-select">
+                <option value="UPI">UPI</option>
+                <option value="Cash">Cash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <select name="status" class="form-select">
+                <option value="Paid">Paid</option>
+                <option value="Pending">Pending</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success w-100">Save Fee &amp; Open Printable Receipt</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mt-1">
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header fw-bold">Reset User Password</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('reset_password') }}" class="row g-2">
+          <div class="col-7">
+            <select name="user_id" class="form-select" required>
+              <option value="">Select Student / Teacher</option>
+              {% for s in students %}<option value="{{ s.id }}">{{ s.name }} (Student - {{ s.student_class }})</option>{% endfor %}
+              {% for t in teachers %}<option value="{{ t.id }}">{{ t.name }} (Teacher)</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-5">
+            <input type="text" name="new_password" class="form-control" placeholder="New Password" required>
+          </div>
+          <div class="col-12 mt-2">
+            <button type="submit" class="btn btn-outline-danger btn-sm w-100">Reset Credentials</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card shadow-sm">
+      <div class="card-header fw-bold">Publish Notice / Batch Announcement</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('add_notice') }}">
+          <div class="row g-2 mb-2">
+            <div class="col-7"><input type="text" name="title" class="form-control form-control-sm" placeholder="Notice Title" required></div>
+            <div class="col-5">
+              <select name="target_class" class="form-select form-select-sm">
+                <option value="All Classes">All Classes (7–12)</option>
+                {% for cls in classes %}<option value="{{ cls }}">{{ cls }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <input type="text" name="message" class="form-control form-control-sm" placeholder="Announcement message..." required>
+            <button type="submit" class="btn btn-dark btn-sm">Post</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mt-4">
+  <div class="card-header fw-bold">Monthly Fee Ledger &amp; Receipts</div>
+  <div class="card-body table-responsive">
+    <table class="table table-striped align-middle">
+      <thead>
+        <tr>
+          <th>Receipt No</th>
+          <th>Student</th>
+          <th>Class / Batch</th>
+          <th>Month</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Receipt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in fees %}
+        <tr>
+          <td>{{ f.receipt_no }}</td>
+          <td>{{ f.student.name }}</td>
+          <td>{{ f.student.student_class }} {% if f.student.batch_timing %}<small class="text-muted">({{ f.student.batch_timing }})</small>{% endif %}</td>
+          <td>{{ f.month }}</td>
+          <td>&#8377; {{ f.amount }}</td>
+          <td><span class="badge bg-{{ 'success' if f.status == 'Paid' else 'warning text-dark' }}">{{ f.status }}</span></td>
+          <td><a href="{{ url_for('fee_receipt', fee_id=f.id) }}" class="btn btn-sm btn-outline-primary">Print Receipt</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
