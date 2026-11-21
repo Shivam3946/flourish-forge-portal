@@ -23,7 +23,7 @@
   <div class="card-body p-4">
     {% if all_questions %}
       {% if mcqs %}
-        <h6 class="fw-bold text-uppercase border-bottom pb-1 mb-3">Section A: Multiple Choice Questions (MCQs)</h6>
+        <h6 class="fw-bold text-uppercase border-bottom pb-1 mb-3">Section A: Multiple Choice Questions (MCQs — {{ mcqs|length }})</h6>
         {% for q in mcqs %}
         <div class="mb-3 pb-2 border-bottom">
           <div class="d-flex justify-content-between">
@@ -41,7 +41,7 @@
       {% endif %}
 
       {% if subjectives %}
-        <h6 class="fw-bold text-uppercase border-bottom pb-1 mt-4 mb-3">Section B: Subjective Questions</h6>
+        <h6 class="fw-bold text-uppercase border-bottom pb-1 mt-4 mb-3">Section B: Subjective Questions ({{ subjectives|length }})</h6>
         {% set offset = mcqs|length %}
         {% for q in subjectives %}
         <div class="mb-3 pb-2 border-bottom">

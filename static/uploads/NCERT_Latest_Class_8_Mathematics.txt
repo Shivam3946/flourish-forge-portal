@@ -1,0 +1,18 @@
+FLOURISH FORGE - LATEST RATIONALISED CBSE NCERT: CLASS 8 MATHEMATICS
+Director: Shivam Tiwari | B.Sc. (Hons.) Computer Science, University of Delhi
+===================================================================================
+Rationalised NCERT Chapter List (Latest CBSE Syllabus):
+1. Rational Numbers
+2. Linear Equations in One Variable
+3. Understanding Quadrilaterals
+4. Data Handling
+5. Squares and Square Roots
+6. Cubes and Cube Roots
+7. Comparing Quantities
+8. Algebraic Expressions and Identities
+9. Mensuration
+10. Exponents and Powers
+11. Direct and Inverse Proportions
+12. Factorisation
+13. Introduction to Graphs
+(Note: Rationalised NCERT retains these core chapters with trimmed redundant exercises.)

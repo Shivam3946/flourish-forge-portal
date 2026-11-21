@@ -1,7 +1,8 @@
+import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 db = SQLAlchemy()
 
@@ -15,6 +16,10 @@ class User(UserMixin, db.Model):
     student_class = db.Column(db.String(15), nullable=True)  # 'Class 7' .. 'Class 12'
     batch_timing = db.Column(db.String(50), nullable=True)   # e.g. '4:00 PM - 5:30 PM'
     subject_specialty = db.Column(db.String(50), nullable=True)  # For teachers
+    qualification = db.Column(db.String(150), nullable=True)       # Education / academic background
+    experience_years = db.Column(db.Integer, nullable=True, default=0)  # Teaching experience in years
+    bio = db.Column(db.Text, nullable=True)                        # Detailed teaching profile / achievements
+    profile_photo = db.Column(db.String(200), nullable=True)       # Filename under static/faculty/
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
@@ -22,6 +27,18 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+class PasswordOTP(db.Model):
+    __tablename__ = 'password_otps'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False)
+    otp_code = db.Column(db.String(6), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def is_valid(self):
+        return (not self.used) and (datetime.utcnow() <= self.expires_at)
 
 class Attendance(db.Model):
     __tablename__ = 'attendance'
@@ -68,6 +85,11 @@ class StudyMaterial(db.Model):
     filename = db.Column(db.String(200), nullable=False)
     uploaded_by = db.Column(db.String(100), nullable=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def is_image(self):
+        ext = os.path.splitext(self.filename.lower())[1]
+        return ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp')
 
 class DoubtTicket(db.Model):
     __tablename__ = 'doubt_tickets'
